@@ -2,7 +2,7 @@
 --
 -- 1. Edit the email on the LAST line to the account you signed up with in the app.
 -- 2. Run the ENTIRE file in the Supabase SQL Editor.
---    You should see a result row containing a number (11 = all seeded, 0 = already seeded).
+--    You should see a result row containing a number (12 = all seeded, 0 = already seeded).
 --    "Success, no rows returned" means you stopped before the final line — scroll to the bottom.
 --
 -- Safe to re-run (skips projects already present for that user).
@@ -49,10 +49,12 @@ begin
        'Next.js 16, TypeScript 6, Tailwind 4, PostgreSQL (pg), WhatsApp Cloud API, Framer Motion', 'India-first Poha QSR chain site: franchise/lead capture with WhatsApp alerts, admin panel, SEO. Capture enquiries into DB.', 'Digital Buddies', 'Project', 'pohewala/'),
       (uid, 'Sumam''s Boutique', 'Sumam''s Boutique', 'Mid-Development', 'E-Commerce Platform', '2026-09-03', '2026-09-07', 5, 45, 'Remote',
        'Next.js 16, Tailwind 3.4, Supabase (Postgres + Auth + Storage + RLS), Razorpay + Stripe, Zod', 'Bengal-heritage saree & jewellery store: full storefront + checkout + admin CMS (products, orders, customers, content, media).', 'Digital Buddies', 'Project', 'Sumams/'),
-      (uid, 'Kasauti (Trading)', 'Digital Buddies (Internal)', 'Research', 'Trader Evaluation Platform (Prop-Firm)', '2026-09-04', '2026-09-07', 4, 20, 'Internal',
-       'Spec: Next.js + NestJS + PostgreSQL + Redis (per 22-system-architecture). Blockchain: pending legal decision', 'India-focused trader-evaluation platform. 40-doc spec package in Trading/docs/. BLOCKED on SEBI 2024 advisory legal decision before coding.', 'Digital Buddies', 'Internal', 'Trading/');
+       (uid, 'Kasauti (Trading)', 'Digital Buddies (Internal)', 'Research', 'Trader Evaluation Platform (Prop-Firm)', '2026-09-04', '2026-09-07', 4, 20, 'Internal',
+        'Spec: Next.js + NestJS + PostgreSQL + Redis (per 22-system-architecture). Blockchain: pending legal decision', 'India-focused trader-evaluation platform. 40-doc spec package in Trading/docs/. BLOCKED on SEBI 2024 advisory legal decision before coding.', 'Digital Buddies', 'Internal', 'Trading/'),
+      (uid, 'Tikhori Foods', 'Tikhori Foods', 'In Development', 'Marketing Website', '2026-07-23', '2026-09-03', 42, null, 'India',
+       'React 19 + Vite 7, TypeScript 5, Tailwind 4, Framer Motion', 'Single-page marketing site for a spice brand: hero, our story, product showcase, what-makes-us-different, farm-to-jar process, testimonials, gallery, and contact sections.', 'Digital Buddies', 'Project', 'tikhori_foods/');
 
-    i := 11;
+    i := 12;
   end if;
 
   return i;
@@ -60,4 +62,4 @@ end;
 $$;
 
 -- IMPORTANT: edit this email to YOUR signed-up account, then run the whole file.
-select public.seed_portfolio('YOUR-EMAIL-HERE@example.com');
+select public.seed_portfolio('aditya.kanojiya.dev@gmail.com');

@@ -8,13 +8,27 @@ const STATUS_BADGE = {
   'In Development': 'dev',
   'Develop': 'dev',
   'Design Phase': 'design',
+  'Completed': 'complete',
+  'MVP Complete': 'complete',
+  'Built': 'production',
+  'Active Dev': 'dev',
+  'Mid-Development': 'dev',
+  'Research': 'design',
   'Pending': 'pending',
-  'Complete': 'complete',
+}
+
+const STATUS_COLORS = {
+  'active': '#5b8cff',
+  'dev': '#f5a623',
+  'design': '#9aa3b7',
+  'production': '#2fd18a',
+  'complete': '#2fd18a',
+  'pending': '#9aa3b7',
 }
 
 const EMPTY_FORM = {
   name: '', client: '', status: 'Pending', type: '', start: '', lastActivity: '',
-  duration: '', hours: '', location: '', tech: '', scope: '', team: '', billing: '', folder: '',
+  duration: '', hours: '', progress: '', location: '', tech: '', scope: '', team: '', billing: '', folder: '',
 }
 
 // ---- Auth ----
@@ -57,7 +71,7 @@ function Auth({ onAuthed }) {
     <div className="auth-wrap">
       <div className="auth-card">
         <h1>Agency Project Tracker</h1>
-        <p className="auth-sub">Sign in to manage projects</p>
+        <p className="auth-sub">Sign in to manage your projects</p>
         <form onSubmit={submit}>
           {mode === 'signup' && (
             <div>
@@ -87,14 +101,15 @@ function Auth({ onAuthed }) {
   )
 }
 
-// ---- Main ----
+// ---- AppShell ----
 function AppInner({ user }) {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
+  const [view, setView] = useState('dashboard')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [sortField, setSortField] = useState('lastActivity')
-  const [editing, setEditing] = useState(null) // project object or null
+  const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [viewing, setViewing] = useState(null)
 
@@ -129,6 +144,7 @@ function AppInner({ user }) {
       last_activity: form.lastActivity || null,
       duration: form.duration ? Number(form.duration) : null,
       hours: form.hours ? Number(form.hours) : null,
+      progress: form.progress !== '' ? Number(form.progress) : null,
       location: form.location,
       tech: form.tech,
       scope: form.scope,
@@ -167,6 +183,7 @@ function AppInner({ user }) {
         name: (x, y) => x.name.localeCompare(y.name),
         client: (x, y) => (x.client || '').localeCompare(y.client || ''),
         start: (x, y) => (x.start || '').localeCompare(y.start || ''),
+        progress: (x, y) => (Number(x.progress) || 0) - (Number(y.progress) || 0),
         duration: (x, y) => (Number(x.duration) || 0) - (Number(y.duration) || 0),
         lastActivity: (x, y) => (y.last_activity || '').localeCompare(x.last_activity || ''),
       }[sortField]
@@ -175,83 +192,84 @@ function AppInner({ user }) {
 
   const stats = {
     total: projects.length,
-    active: projects.filter((p) => ['Active', 'In Development', 'Design Phase'].includes(p.status)).length,
-    production: projects.filter((p) => p.status === 'Production Ready').length,
+    active: projects.filter((p) => ['Active', 'In Development', 'Develop', 'Active Dev', 'Mid-Development'].includes(p.status)).length,
+    production: projects.filter((p) => ['Production Ready', 'Built', 'Completed', 'MVP Complete'].includes(p.status)).length,
     hours: projects.reduce((s, p) => s + (Number(p.hours) || 0), 0),
+    days: projects.reduce((s, p) => s + (Number(p.duration) || 0), 0),
+    avgProgress: projects.length ? Math.round(projects.reduce((s, p) => s + (Number(p.progress) || 0), 0) / projects.length) : 0,
   }
 
   return (
-    <>
+    <div className="app-shell">
       <header className="header">
-        <div>
-          <h1>Agency Project Tracker</h1>
-          <div className="sub">Signed in as {user?.email}</div>
+        <div className="header-inner">
+          <div>
+            <h1><span className="brand-dot" />Agency Project Tracker</h1>
+            <div className="sub">Signed in as {user?.email}</div>
+          </div>
+          <div className="header-actions">
+            <button onClick={() => exportCSV(filtered)}>Export CSV</button>
+            <button onClick={() => exportJSON(filtered)}>Export JSON</button>
+            <button className="primary" onClick={() => { setEditing(null); setShowForm(true) }}>+ New Project</button>
+            <button onClick={signOut}>Sign Out</button>
+          </div>
         </div>
-        <div className="header-actions">
-          <button onClick={() => exportCSV(filtered)}>Export CSV</button>
-          <button onClick={() => exportJSON(filtered)}>Export JSON</button>
-          <button className="primary" onClick={() => { setEditing(null); setShowForm(true) }}>+ New Project</button>
-          <button onClick={signOut}>Sign Out</button>
+        <div className="tabs">
+          {['dashboard', 'board', 'table'].map((v) => (
+            <button key={v} className={`tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>
+              {v === 'dashboard' ? 'Dashboard' : v === 'board' ? 'Board' : 'Table'}
+            </button>
+          ))}
         </div>
       </header>
 
       <main className="main">
-        <div className="stats">
-          <Stat num={stats.total} label="Total Projects" />
-          <Stat num={stats.active} label="Active / In Dev" />
-          <Stat num={stats.production} label="Production Ready" />
-          <Stat num={stats.hours || '—'} label="Total Hours" />
-        </div>
-
-        <div className="toolbar">
-          <input type="search" placeholder="Search projects..." value={q} onChange={(e) => setQ(e.target.value)} />
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">All Statuses</option>
-            {Object.keys(STATUS_BADGE).map((s) => <option key={s}>{s}</option>)}
-          </select>
-          <select value={sortField} onChange={(e) => setSortField(e.target.value)}>
-            <option value="lastActivity">Sort: Last Activity</option>
-            <option value="start">Sort: Start Date</option>
-            <option value="duration">Sort: Duration</option>
-            <option value="name">Sort: Name</option>
-            <option value="client">Sort: Client</option>
-          </select>
-        </div>
-
         {loading ? (
           <div className="empty">Loading projects...</div>
+        ) : view === 'dashboard' ? (
+          <Dashboard projects={projects} stats={stats} onOpen={setViewing} onClickNew={() => { setEditing(null); setShowForm(true) }} />
+        ) : view === 'board' ? (
+          <BoardView projects={projects} filters={{ q, statusFilter, sortField }} onSetQ={setQ} onSetStatus={setStatusFilter} onSetSort={setSortField} onOpen={setViewing} />
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Project</th><th>Client</th><th>Status</th><th>Start</th>
-                <th>Last Activity</th><th>Duration</th><th>Type</th><th>Hours</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p) => (
-                <tr key={p.id}>
-                  <td><strong>{p.name}</strong>{p.folder ? <div className="cell-sub">{p.folder}</div> : ''}</td>
-                  <td>{p.client || '—'}</td>
-                  <td><span className={`badge ${STATUS_BADGE[p.status] || 'pending'}`}>{p.status}</span></td>
-                  <td>{fmtDate(p.start)}</td>
-                  <td>{fmtDate(p.last_activity)}</td>
-                  <td>{p.duration ? p.duration + ' days' : '—'}</td>
-                  <td>{p.type || '—'}</td>
-                  <td>{p.hours ?? '—'}</td>
-                  <td>
-                    <div className="row-actions">
-                      <button onClick={() => setViewing(p)}>Details</button>
-                      <button onClick={() => { setEditing(p); setShowForm(true) }}>Edit</button>
-                      <button className="danger" onClick={() => deleteProject(p.id, p.name)}>Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <Toolbar q={q} setQ={setQ} statusFilter={statusFilter} setStatusFilter={setStatusFilter} sortField={sortField} setSortField={setSortField} />
+            {filtered.length === 0 ? (
+              <div className="empty"><div className="big">📭</div>No projects found.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Project</th><th>Client</th><th>Status</th><th>Start</th>
+                      <th>Last Activity</th><th>Duration</th><th>Progress</th><th>Hours</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((p) => (
+                      <tr key={p.id}>
+                        <td><strong>{p.name}</strong>{p.folder ? <div className="cell-sub">{p.folder}</div> : ''}</td>
+                        <td>{p.client || '—'}</td>
+                        <td><span className={`badge ${STATUS_BADGE[p.status] || 'pending'}`}>{p.status}</span></td>
+                        <td>{fmtDate(p.start)}</td>
+                        <td>{fmtDate(p.last_activity)}</td>
+                        <td>{p.duration ? p.duration + ' days' : '—'}</td>
+                        <td><Progress val={p.progress} /></td>
+                        <td>{p.hours ?? '—'}</td>
+                        <td>
+                          <div className="row-actions">
+                            <button onClick={() => setViewing(p)}>Details</button>
+                            <button onClick={() => { setEditing(p); setShowForm(true) }}>Edit</button>
+                            <button className="danger" onClick={() => deleteProject(p.id, p.name)}>Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
-        {!loading && filtered.length === 0 && <div className="empty">No projects found.</div>}
       </main>
 
       {showForm && (
@@ -262,26 +280,170 @@ function AppInner({ user }) {
         />
       )}
 
-      {viewing && <ProjectView project={viewing} onClose={() => setViewing(null)} />}
-    </>
-  )
-}
-
-function Stat({ num, label }) {
-  return (
-    <div className="stat">
-      <div className="num">{num}</div>
-      <div className="label">{label}</div>
+      {viewing && <ProjectView project={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setShowForm(true); setViewing(null) }} />}
     </div>
   )
 }
 
+function Toolbar({ q, setQ, statusFilter, setStatusFilter, sortField, setSortField }) {
+  return (
+    <div className="toolbar">
+      <input type="search" placeholder="Search projects..." value={q} onChange={(e) => setQ(e.target.value)} />
+      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <option value="">All Statuses</option>
+        {Object.keys(STATUS_BADGE).map((s) => <option key={s}>{s}</option>)}
+      </select>
+      <select value={sortField} onChange={(e) => setSortField(e.target.value)}>
+        <option value="lastActivity">Sort: Last Activity</option>
+        <option value="progress">Sort: Progress</option>
+        <option value="start">Sort: Start Date</option>
+        <option value="duration">Sort: Duration</option>
+        <option value="name">Sort: Name</option>
+      </select>
+    </div>
+  )
+}
+
+// ---- Dashboard ----
+function Dashboard({ projects, stats, onOpen, onClickNew }) {
+  const byStatus = {}
+  projects.forEach((p) => {
+    const k = STATUS_BADGE[p.status] || 'pending'
+    byStatus[k] = byStatus[k] || { count: 0, color: STATUS_COLORS[k], label: k }
+    byStatus[k].count++
+  })
+  const maxCount = Math.max(1, ...Object.values(byStatus).map((s) => s.count))
+  const recent = [...projects].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 6)
+
+  return (
+    <div className="dash-grid">
+      <div className="stat-cards">
+        <StatCard num={stats.total} label="Total Projects" color="#5b8cff" sub={`${stats.active} active`} />
+        <StatCard num={stats.production} label="Production Ready" color="#2fd18a" />
+        <StatCard num={stats.hours} label="Total Hours" color="#a78bfa" />
+        <StatCard num={stats.days} label="Total Days" color="#38bdf8" />
+        <StatCard num={stats.avgProgress + '%'} label="Avg Progress" color="#f5a623" />
+      </div>
+
+      <div className="dash-grid" style={{ gridTemplateColumns: '1.4fr 1fr' }}>
+        <div className="panel">
+          <div className="panel-head"><h3>Quick Overview</h3><div className="muted">Latest activity across projects</div></div>
+          <div className="recent-list">
+            {recent.map((p) => (
+              <div className="recent-item" key={p.id} onClick={() => onOpen(p)} style={{ cursor: 'pointer' }}>
+                <span className={`badge ${STATUS_BADGE[p.status] || 'pending'}`}>{p.status}</span>
+                <div className="info">
+                  <div className="name">{p.name}</div>
+                  <div className="meta">{p.client || '—'} · Updated {fmtDate(p.updated_at)}</div>
+                </div>
+                <Progress val={p.progress} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="dash-grid" style={{ gap: 16 }}>
+          <div className="panel">
+            <div className="panel-head"><h3>Status Breakdown</h3></div>
+            <div className="status-bars">
+              {Object.entries(byStatus).sort((a, b) => b[1].count - a[1].count).map(([k, s]) => (
+                <div className="status-row" key={k}>
+                  <span className="name" style={{ textTransform: 'capitalize' }}>
+                    <span className="dot" style={{ background: s.color }} />{s.label}
+                  </span>
+                  <div className="track"><div className="fill" style={{ width: (s.count / maxCount) * 100 + '%', background: s.color }} /></div>
+                  <span className="count">{s.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-head"><h3>Top Projects by Hours</h3></div>
+            <div className="recent-list">
+              {[...projects].sort((a, b) => (Number(b.hours) || 0) - (Number(a.hours) || 0)).slice(0, 4).map((p) => (
+                <div className="recent-item" key={p.id} onClick={() => onOpen(p)} style={{ cursor: 'pointer' }}>
+                  <div className="info">
+                    <div className="name">{p.name}</div>
+                    <div className="meta">{p.hours ?? 0} hrs · {p.duration ?? 0} days</div>
+                  </div>
+                  <strong style={{ fontSize: 14 }}>{p.hours ?? '—'}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StatCard({ num, label, color, sub }) {
+  return (
+    <div className="stat-card" style={{ '--stat-c': color }}>
+      <div className="num">{num}</div>
+      <div className="label">{label}</div>
+      {sub && <div className="sub">{sub}</div>}
+    </div>
+  )
+}
+
+function Progress({ val }) {
+  const v = Math.min(100, Math.max(0, Number(val) || 0))
+  const color = v >= 100 ? '#2fd18a' : v >= 50 ? '#5b8cff' : '#f5a623'
+  return (
+    <div className="progress-pill">
+      <div className="progress-bar"><div className="progress-fill" style={{ width: v + '%', background: color }} /></div>
+      <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 30 }}>{v}%</span>
+    </div>
+  )
+}
+
+// ---- Board (Kanban) ----
+function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen }) {
+  const cols = ['Design Phase', 'Pending', 'In Development', 'Active', 'Production Ready', 'Completed']
+  const groups = cols.map((c) => ({ col: c, list: projects.filter((p) => p.status === c) }))
+  return (
+    <>
+      <Toolbar {...filters} setQ={onSetQ} setStatusFilter={onSetStatus} setSortField={onSetSort} />
+      <div className="board">
+        {groups.map(({ col, list }) => (
+          <div className="board-col" key={col}>
+            <div className="board-col-head">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span className="dot" style={{ background: STATUS_COLORS[STATUS_BADGE[col] || 'pending'] }} />{col}
+              </span>
+              <span style={{ color: 'var(--muted)' }}>{list.length}</span>
+            </div>
+            <div className="board-cards">
+              {list.map((p) => (
+                <div className="board-card" key={p.id} onClick={() => onOpen(p)}>
+                  <div className="name">{p.name}</div>
+                  <div className="client">{p.client || '—'}</div>
+                  {p.progress != null && <div style={{ marginTop: 10 }}><Progress val={p.progress} /></div>}
+                  <div className="meta">
+                    {p.duration ? <span>⏱ {p.duration}d</span> : ''}
+                    {p.hours ? <span>🕐 {p.hours}h</span> : ''}
+                    {p.last_activity ? <span>{fmtDate(p.last_activity)}</span> : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {projects.length === 0 && <div className="empty"><div className="big">🗂</div>No projects yet. Click "+ New Project" to begin.</div>}
+    </>
+  )
+}
+
+// ---- Forms / Details ----
 function ProjectForm({ initial, onCancel, onSave }) {
   const [form, setForm] = useState(initial ? {
     name: initial.name, client: initial.client, status: initial.status, type: initial.type,
     start: initial.start || '', lastActivity: initial.last_activity || '', duration: initial.duration || '',
-    hours: initial.hours || '', location: initial.location, tech: initial.tech, scope: initial.scope,
-    team: initial.team, billing: initial.billing, folder: initial.folder,
+    hours: initial.hours || '', progress: initial.progress ?? '', location: initial.location, tech: initial.tech,
+    scope: initial.scope, team: initial.team, billing: initial.billing, folder: initial.folder,
   } : { ...EMPTY_FORM })
   const [error, setError] = useState(null)
 
@@ -290,7 +452,6 @@ function ProjectForm({ initial, onCancel, onSave }) {
   const submit = (e) => {
     e.preventDefault()
     if (!form.name.trim()) { setError('Project name is required'); return }
-    // auto-calc duration from dates if empty
     let duration = form.duration
     if (!duration && form.start && form.lastActivity) {
       duration = Math.max(1, Math.round((new Date(form.lastActivity) - new Date(form.start)) / 86400000)) + 1
@@ -316,6 +477,12 @@ function ProjectForm({ initial, onCancel, onSave }) {
             <div><label>Last Activity</label><input type="date" value={form.lastActivity} onChange={set('lastActivity')} /></div>
             <div><label>Duration (days)</label><input type="number" min="0" value={form.duration} onChange={set('duration')} placeholder="auto" /></div>
             <div><label>Total Hours</label><input type="number" min="0" value={form.hours} onChange={set('hours')} /></div>
+            <div className="full"><label>Progress</label>
+              <div className="range-wrap">
+                <input type="range" min="0" max="100" value={form.progress || 0} onChange={set('progress')} />
+                <span className="range-val">{form.progress || 0}%</span>
+              </div>
+            </div>
             <div className="full"><label>Location</label><input value={form.location} onChange={set('location')} /></div>
             <div className="full"><label>Folder</label><input value={form.folder} onChange={set('folder')} placeholder="e.g. 9-pm/" /></div>
             <div className="full"><label>Tech Stack</label><input value={form.tech} onChange={set('tech')} /></div>
@@ -334,19 +501,21 @@ function ProjectForm({ initial, onCancel, onSave }) {
   )
 }
 
-function ProjectView({ project, onClose }) {
+function ProjectView({ project, onClose, onEdit }) {
   const rows = [
     ['Client', project.client], ['Status', project.status], ['Type', project.type],
     ['Start Date', fmtDate(project.start)], ['Last Activity', fmtDate(project.last_activity)],
-    ['Duration', project.duration + ' days'], ['Location', project.location], ['Hours', project.hours],
-    ['Tech Stack', project.tech], ['Team', project.team], ['Folder', project.folder],
-    ['Commits', project.commits], ['Scope', project.scope], ['Billing', project.billing],
+    ['Duration', project.duration ? project.duration + ' days' : null], ['Progress', project.progress != null ? project.progress + '%' : null],
+    ['Location', project.location], ['Hours', project.hours], ['Tech Stack', project.tech],
+    ['Team', project.team], ['Folder', project.folder], ['Commits', project.commits],
+    ['Scope', project.scope], ['Billing', project.billing],
   ].filter(([, v]) => v != null && v !== '')
 
   return (
     <div className="modal-backdrop open" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal">
         <h2>{project.name}</h2>
+        {project.progress != null && <div style={{ marginBottom: 16 }}><Progress val={project.progress} /></div>}
         <table className="detail-table">
           <tbody>
             {rows.map(([k, v]) => (
@@ -354,7 +523,10 @@ function ProjectView({ project, onClose }) {
             ))}
           </tbody>
         </table>
-        <div className="modal-actions"><button className="primary" onClick={onClose}>Close</button></div>
+        <div className="modal-actions">
+          <button onClick={onEdit}>Edit</button>
+          <button className="primary" onClick={onClose}>Close</button>
+        </div>
       </div>
     </div>
   )
@@ -362,8 +534,8 @@ function ProjectView({ project, onClose }) {
 
 // ---- Export helpers ----
 function exportCSV(list) {
-  const headers = ['Name', 'Client', 'Status', 'Type', 'Start', 'Last Activity', 'Duration', 'Hours', 'Location', 'Tech', 'Scope', 'Team', 'Billing', 'Folder']
-  const key = { 'Name': 'name', 'Client': 'client', 'Status': 'status', 'Type': 'type', 'Start': 'start', 'Last Activity': 'last_activity', 'Duration': 'duration', 'Hours': 'hours', 'Location': 'location', 'Tech': 'tech', 'Scope': 'scope', 'Team': 'team', 'Billing': 'billing', 'Folder': 'folder' }
+  const headers = ['Name', 'Client', 'Status', 'Type', 'Start', 'Last Activity', 'Duration', 'Hours', 'Progress', 'Location', 'Tech', 'Scope', 'Team', 'Billing', 'Folder']
+  const key = { 'Name': 'name', 'Client': 'client', 'Status': 'status', 'Type': 'type', 'Start': 'start', 'Last Activity': 'last_activity', 'Duration': 'duration', 'Hours': 'hours', 'Progress': 'progress', 'Location': 'location', 'Tech': 'tech', 'Scope': 'scope', 'Team': 'team', 'Billing': 'billing', 'Folder': 'folder' }
   const body = list.map((p) => headers.map((h) => '"' + String(p[key[h]] != null ? p[key[h]] : '').replace(/"/g, '""') + '"').join(','))
   download((headers.join(',') + '\n' + body.join('\n')), 'agency-projects.csv', 'text/csv')
 }
@@ -395,7 +567,6 @@ export default function App() {
   const [user, setUser] = useState(null)
   const [checking, setChecking] = useState(true)
 
-  // detect existing session on load
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setUser(data?.session?.user ?? null)

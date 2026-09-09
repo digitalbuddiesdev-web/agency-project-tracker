@@ -13,6 +13,7 @@ create table if not exists public.projects (
   last_activity date,
   duration int,
   hours numeric,
+  progress int,
   location text,
   tech text,
   scope text,
