@@ -307,7 +307,7 @@ function AppInner({ user }) {
         />
       )}
 
-      {viewing && <ProjectView project={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setShowForm(true); setViewing(null) }} />}
+      {viewing && <ProjectView project={viewing} onClose={() => setViewing(null)} canEdit={canEdit} onEdit={() => { setEditing(viewing); setShowForm(true); setViewing(null) }} />}
     </div>
   )
 }
@@ -639,8 +639,7 @@ function ProjectForm({ initial, onCancel, onSave }) {
   )
 }
 
-function ProjectView({ project, onClose, onEdit }) {
-  const rows = [
+function ProjectView({ project, onClose, onEdit, canEdit }) {  const rows = [
     ['Client', project.client], ['Status', project.status], ['Type', project.type],
     ['Start Date', fmtDate(project.start)], ['Last Activity', fmtDate(project.last_activity)],
     ['Duration', project.duration ? project.duration + ' days' : null], ['Progress', project.progress != null ? project.progress + '%' : null],
@@ -662,7 +661,7 @@ function ProjectView({ project, onClose, onEdit }) {
           </tbody>
         </table>
         <div className="modal-actions">
-          <button onClick={onEdit}>Edit</button>
+          {canEdit && <button onClick={onEdit}>Edit</button>}
           <button className="primary" onClick={onClose}>Close</button>
         </div>
       </div>
