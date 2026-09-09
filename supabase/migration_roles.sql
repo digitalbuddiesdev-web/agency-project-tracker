@@ -69,6 +69,10 @@ drop policy if exists "users select own" on public.projects;
 drop policy if exists "users insert own" on public.projects;
 drop policy if exists "users update own" on public.projects;
 drop policy if exists "users delete own" on public.projects;
+drop policy if exists "workspace select" on public.projects;
+drop policy if exists "workspace write" on public.projects;
+drop policy if exists "workspace update" on public.projects;
+drop policy if exists "workspace delete" on public.projects;
 
 create policy "workspace select" on public.projects
   for select using (public.is_workspace_member(owner_id));
