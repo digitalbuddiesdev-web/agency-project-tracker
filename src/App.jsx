@@ -77,6 +77,57 @@ function Auth({ onAuthed }) {
   )
 }
 
+// ---- Set new password (landed via recovery link) ----
+function RecoveryForm() {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState(null)
+  const [msg, setMsg] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setError(null); setMsg(null)
+    if (password !== confirm) { setError('Passwords do not match'); return }
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    setLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password })
+      if (error) throw error
+      setMsg('Password updated. Sign in with your new password.')
+      await supabase.auth.signOut()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="auth-wrap">
+      <div className="auth-card">
+        <h1>Agency Project Tracker</h1>
+        <p className="auth-sub">Set a new password</p>
+        <form onSubmit={submit}>
+          <div>
+            <label>New Password</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoFocus />
+          </div>
+          <div>
+            <label>Confirm Password</label>
+            <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={6} />
+          </div>
+          {msg && <div className="auth-msg">{msg}</div>}
+          {error && <div className="auth-error">{error}</div>}
+          <button className="primary auth-btn" type="submit" disabled={loading}>
+            {loading ? 'Saving...' : 'Set Password'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ---- AppShell ----
 function AppInner({ user }) {
   const [projects, setProjects] = useState([])
@@ -485,6 +536,7 @@ function PeopleView() {
   const [error, setError] = useState(null)
   const [msg, setMsg] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [resetLink, setResetLink] = useState(null)
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('list_members')
@@ -529,20 +581,18 @@ function PeopleView() {
     load()
   }
 
-  const resetPassword = async (mEmail) => {
-    const newPw = prompt(`New password for ${mEmail} (min 6 chars):`)
-    if (!newPw) return
-    if (newPw.length < 6) { alert('Password must be at least 6 characters'); return }
+  const generateResetLink = async (mEmail) => {
     const { data: session } = await supabase.auth.getSession()
     const token = session?.session?.access_token
     const res = await fetch('/api/create-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'reset-password', email: mEmail, password: newPw }),
+      body: JSON.stringify({ action: 'reset-link', email: mEmail }),
     })
     const json = await res.json().catch(() => ({}))
-    if (!res.ok) { alert(json.error || 'Failed to reset password'); return }
-    alert(`Password reset for ${mEmail}. Hand them the new one.`)
+    if (!res.ok) { alert(json.error || 'Failed to generate reset link'); return }
+    const link = json.reset_link
+    setResetLink(link ? { email: mEmail, link } : null)
   }
 
   const ROLE_LABEL = { owner: 'Owner', intern: 'Intern', viewer: 'Boss' }
@@ -575,6 +625,18 @@ function PeopleView() {
 
       <div className="panel">
         <div className="panel-head"><h3>Team members</h3><div className="muted">{members.length} in this workspace</div></div>
+        {resetLink && (
+          <div style={{ padding: '0 20px 16px' }}>
+            <div className="auth-msg" style={{ margin: 0 }}>
+              <strong>Reset link for {resetLink.email}</strong> — share it with them. It expires in a few minutes.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <code style={{ background: 'var(--panel2)', padding: '8px 12px', borderRadius: 8, fontSize: 12, wordBreak: 'break-all', flex: 1 }}>{resetLink.link}</code>
+              <button className="primary" onClick={() => { navigator.clipboard?.writeText(resetLink.link); setMsg('Link copied to clipboard') }}>Copy</button>
+              <button className="ghost" onClick={() => setResetLink(null)}>Dismiss</button>
+            </div>
+          </div>
+        )}
         <div className="recent-list">
           {members.map((m) => (
             <div className="recent-item" key={m.email}>
@@ -589,7 +651,7 @@ function PeopleView() {
                     <option value="intern">Intern</option>
                     <option value="viewer">Boss</option>
                   </select>
-                  <button className="ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => resetPassword(m.email)} title="Reset password">Reset</button>
+                  <button className="ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => generateResetLink(m.email)} title="Generate reset link">Reset</button>
                 </div>
               )}
             </div>
@@ -729,18 +791,21 @@ function fmtDate(d) {
 export default function App() {
   const [user, setUser] = useState(null)
   const [checking, setChecking] = useState(true)
+  const [recovery, setRecovery] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setUser(data?.session?.user ?? null)
       setChecking(false)
     })
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((evt, session) => {
+      if (evt === 'PASSWORD_RECOVERY') setRecovery(true)
       setUser(session?.user ?? null)
     })
     return () => sub?.subscription?.unsubscribe()
   }, [])
 
   if (checking) return <div className="auth-wrap"><div className="auth-card">Loading...</div></div>
+  if (recovery) return <RecoveryForm />
   return user ? <AppInner user={user} /> : <Auth onAuthed={setUser} />
 }

@@ -33,6 +33,17 @@ export default async function handler(req, res) {
   // Find an existing auth user (we may create, update role, or reset password).
   const { data: existing } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
 
+  if (action === 'reset-link') {
+    const target = (existing.users || []).find((u) => u.email === normalizedEmail)
+    if (!target) return res.status(404).json({ error: `No account for ${normalizedEmail}. Create it instead.` })
+    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+      type: 'recovery',
+      email: normalizedEmail,
+    })
+    if (linkErr || !linkData?.properties?.action_link) return res.status(500).json({ error: 'Failed to generate reset link: ' + (linkErr?.message || 'no link returned') })
+    return res.status(200).json({ ok: true, email: normalizedEmail, action: 'reset-link', reset_link: linkData.properties.action_link })
+  }
+
   if (action === 'reset-password') {
     if (!password || String(password).length < 6) return res.status(400).json({ error: 'password must be at least 6 characters' })
     const target = (existing.users || []).find((u) => u.email === normalizedEmail)
