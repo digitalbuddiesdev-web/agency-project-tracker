@@ -105,6 +105,7 @@ function Auth({ onAuthed }) {
 function AppInner({ user }) {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState(null) // { role, owner_id } or null
   const [view, setView] = useState('dashboard')
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -112,6 +113,21 @@ function AppInner({ user }) {
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [viewing, setViewing] = useState(null)
+
+  const role = profile?.role || 'owner' // fresh signups with no profile can still work
+  const canEdit = role !== 'viewer'
+  const ownerId = profile?.owner_id || user.id
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('role, owner_id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      setProfile(data || null)
+    })()
+  }, [user.id])
 
   const fetchProjects = useCallback(async () => {
     setLoading(true)
@@ -157,7 +173,7 @@ function AppInner({ user }) {
     if (editing) {
       ;({ error: err } = await supabase.from('projects').update(payload).eq('id', editing.id))
     } else {
-      ;({ error: err } = await supabase.from('projects').insert(payload))
+      ;({ error: err } = await supabase.from('projects').insert({ ...payload, owner_id: ownerId }))
     }
     if (err) { alert('Save failed: ' + err.message); return false }
     fetchProjects()
@@ -219,14 +235,14 @@ function AppInner({ user }) {
           <div className="header-actions">
             <button onClick={() => exportCSV(filtered)}>Export CSV</button>
             <button onClick={() => exportJSON(filtered)}>Export JSON</button>
-            <button className="primary" onClick={() => { setEditing(null); setShowForm(true) }}>+ New Project</button>
+            {canEdit && <button className="primary" onClick={() => { setEditing(null); setShowForm(true) }}>+ New Project</button>}
             <button onClick={signOut}>Sign Out</button>
           </div>
         </div>
         <div className="tabs">
-          {['dashboard', 'board', 'table'].map((v) => (
+          {['dashboard', 'board', 'table', ...(role === 'owner' ? ['people'] : [])].map((v) => (
             <button key={v} className={`tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>
-              {v === 'dashboard' ? 'Dashboard' : v === 'board' ? 'Board' : 'Table'}
+              {v === 'dashboard' ? 'Dashboard' : v === 'board' ? 'Board' : v === 'table' ? 'Table' : 'People'}
             </button>
           ))}
         </div>
@@ -235,10 +251,12 @@ function AppInner({ user }) {
       <main className="main">
         {loading ? (
           <div className="empty">Loading projects...</div>
+        ) : view === 'people' ? (
+          <PeopleView ownerId={ownerId} />
         ) : view === 'dashboard' ? (
-          <Dashboard projects={projects} stats={stats} onOpen={setViewing} onClickNew={() => { setEditing(null); setShowForm(true) }} />
+          <Dashboard projects={projects} stats={stats} onOpen={setViewing} onClickNew={canEdit ? () => { setEditing(null); setShowForm(true) } : null} />
         ) : view === 'board' ? (
-          <BoardView projects={projects} filters={{ q, statusFilter, sortField }} onSetQ={setQ} onSetStatus={setStatusFilter} onSetSort={setSortField} onOpen={setViewing} onMove={updateStatus} />
+          <BoardView projects={projects} filters={{ q, statusFilter, sortField }} onSetQ={setQ} onSetStatus={setStatusFilter} onSetSort={setSortField} onOpen={setViewing} onMove={updateStatus} canDrag={canEdit} />
         ) : (
           <>
             <Toolbar q={q} setQ={setQ} statusFilter={statusFilter} setStatusFilter={setStatusFilter} sortField={sortField} setSortField={setSortField} />
@@ -267,8 +285,8 @@ function AppInner({ user }) {
                         <td>
                           <div className="row-actions">
                             <button onClick={() => setViewing(p)}>Details</button>
-                            <button onClick={() => { setEditing(p); setShowForm(true) }}>Edit</button>
-                            <button className="danger" onClick={() => deleteProject(p.id, p.name)}>Delete</button>
+                            {canEdit && <button onClick={() => { setEditing(p); setShowForm(true) }}>Edit</button>}
+                            {canEdit && <button className="danger" onClick={() => deleteProject(p.id, p.name)}>Delete</button>}
                           </div>
                         </td>
                       </tr>
@@ -411,7 +429,7 @@ function Progress({ val }) {
 // ---- Board (Kanban) ----
 const BOARD_ORDER = ['Design Phase', 'Pending', 'Develop', 'In Development', 'Active Dev', 'Mid-Development', 'Active', 'Built', 'MVP Complete', 'Production Ready', 'Completed', 'Research']
 
-function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen, onMove }) {
+function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen, onMove, canDrag }) {
   const [dragId, setDragId] = useState(null)
   const [overCol, setOverCol] = useState(null)
   const dragCount = useRef({})
@@ -457,7 +475,7 @@ function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen, 
                 <div
                   className="board-card"
                   key={p.id}
-                  draggable
+                  draggable={canDrag}
                   onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.id) }}
                   onDragEnd={() => { setDragId(null); setOverCol(null); dragCount.current = {} }}
                   onClick={() => onOpen(p)}
@@ -479,6 +497,81 @@ function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen, 
       </div>
       {projects.length === 0 && <div className="empty"><div className="big">🗂</div>No projects yet. Click "+ New Project" to begin.</div>}
     </>
+  )
+}
+
+// ---- People (owner only) ----
+function PeopleView({ ownerId }) {
+  const [members, setMembers] = useState([])
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState('intern')
+  const [error, setError] = useState(null)
+  const [msg, setMsg] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc('list_members')
+    if (!error) setMembers(data || [])
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const add = async (e) => {
+    e.preventDefault()
+    setError(null); setMsg(null); setLoading(true)
+    try {
+      const { error } = await supabase.rpc('upsert_member', { p_email: email, p_role: role })
+      if (error) throw error
+      setMsg(`Done. ${email} is now ${role}.`)
+      setEmail('')
+      load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const ROLE_LABEL = { owner: 'Owner', intern: 'Intern (full access)', viewer: 'Boss (read-only)' }
+
+  return (
+    <div className="dash-grid">
+      <div className="panel">
+        <div className="panel-head"><h3>Add / manage team</h3><div className="muted">Assign roles in your shared workspace. Each person must <strong>sign up in the app first</strong> (you can sign up on their behalf), then add their email here.</div></div>
+        <form onSubmit={add} style={{ padding: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <label>Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="intern@example.com" />
+          </div>
+          <div style={{ minWidth: 200 }}>
+            <label>Role</label>
+            <select value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="intern">Intern (full access)</option>
+              <option value="viewer">Boss (read-only)</option>
+            </select>
+          </div>
+          <button className="primary" type="submit" disabled={loading}>{loading ? 'Saving...' : 'Add / Update'}</button>
+        </form>
+        {error && <div className="auth-error" style={{ margin: '0 20px 20px' }}>{error}</div>}
+        {msg && <div className="auth-msg" style={{ margin: '0 20px 20px' }}>{msg}</div>}
+      </div>
+
+      <div className="panel">
+        <div className="panel-head"><h3>Team members</h3><div className="muted">{members.length} in this workspace</div></div>
+        <div className="recent-list">
+          {members.map((m) => (
+            <div className="recent-item" key={m.email}>
+              <span className="badge" style={{ minWidth: 70, textAlign: 'center' }}>{ROLE_LABEL[m.role] || m.role}</span>
+              <div className="info">
+                <div className="name">{m.email}</div>
+                <div className="meta">{m.is_owner ? 'Workspace owner' : 'Member'}</div>
+              </div>
+            </div>
+          ))}
+          {members.length === 0 && <div className="empty" style={{ padding: 20 }}>No members yet.</div>}
+        </div>
+      </div>
+    </div>
   )
 }
 

@@ -25,9 +25,9 @@ begin
     raise exception 'No user found for email %. Sign up in the app first, then re-run with that email.', p_email;
   end if;
 
-  if not exists (select 1 from public.projects where user_id = uid and name = 'Physio Prime (Web)') then
+  if not exists (select 1 from public.projects where owner_id = uid and name = 'Physio Prime (Web)') then
     insert into public.projects
-      (user_id, name, client, status, type, start, last_activity, duration, hours, location, tech, scope, team, billing, folder)
+      (owner_id, name, client, status, type, start, last_activity, duration, hours, location, tech, scope, team, billing, folder)
     values
       (uid, '9PM Bar & Cafe', '9PM Bar & Cafe', 'Production Ready', 'Marketing Website', '2026-09-07', '2026-09-07', 1, 16, 'Mohanbagh, Palolem, South Goa',
        'React 18 (CRA), Tailwind CSS 3.4, Lucide React', 'High-conversion SPA for a South Goa DJ bar: lineups, cocktails, kitchen, Google reviews, reservations, gallery, Instagram.', 'Digital Buddies', 'Project', '9-pm/'),
