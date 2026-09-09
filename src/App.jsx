@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from './lib/supabase'
 import './App.css'
 
@@ -173,6 +173,15 @@ function AppInner({ user }) {
     fetchProjects()
   }
 
+  const updateStatus = async (id, status) => {
+    const { error } = await supabase
+      .from('projects')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) { alert('Status update failed: ' + error.message); return }
+    fetchProjects()
+  }
+
   const filtered = projects
     .filter((p) =>
       (!statusFilter || p.status === statusFilter) &&
@@ -229,7 +238,7 @@ function AppInner({ user }) {
         ) : view === 'dashboard' ? (
           <Dashboard projects={projects} stats={stats} onOpen={setViewing} onClickNew={() => { setEditing(null); setShowForm(true) }} />
         ) : view === 'board' ? (
-          <BoardView projects={projects} filters={{ q, statusFilter, sortField }} onSetQ={setQ} onSetStatus={setStatusFilter} onSetSort={setSortField} onOpen={setViewing} />
+          <BoardView projects={projects} filters={{ q, statusFilter, sortField }} onSetQ={setQ} onSetStatus={setStatusFilter} onSetSort={setSortField} onOpen={setViewing} onMove={updateStatus} />
         ) : (
           <>
             <Toolbar q={q} setQ={setQ} statusFilter={statusFilter} setStatusFilter={setStatusFilter} sortField={sortField} setSortField={setSortField} />
@@ -400,15 +409,37 @@ function Progress({ val }) {
 }
 
 // ---- Board (Kanban) ----
-function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen }) {
+function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen, onMove }) {
+  const [dragId, setDragId] = useState(null)
+  const [overCol, setOverCol] = useState(null)
+  const dragCount = useRef({})
   const cols = ['Design Phase', 'Pending', 'In Development', 'Active', 'Production Ready', 'Completed']
   const groups = cols.map((c) => ({ col: c, list: projects.filter((p) => p.status === c) }))
+
+  const onDrop = (col) => {
+    setOverCol(null)
+    const id = dragId
+    setDragId(null)
+    if (id) onMove(id, col)
+  }
+
   return (
     <>
       <Toolbar {...filters} setQ={onSetQ} setStatusFilter={onSetStatus} setSortField={onSetSort} />
       <div className="board">
         {groups.map(({ col, list }) => (
-          <div className="board-col" key={col}>
+          <div
+            className="board-col"
+            key={col}
+            onDragOver={(e) => { e.preventDefault(); if (overCol !== col) setOverCol(col) }}
+            onDragEnter={(e) => { e.preventDefault(); dragCount.current[col] = (dragCount.current[col] || 0) + 1 }}
+            onDragLeave={() => {
+              dragCount.current[col] = (dragCount.current[col] || 1) - 1
+              if (dragCount.current[col] <= 0) { dragCount.current[col] = 0; setOverCol((c) => (c === col ? null : c)) }
+            }}
+            onDrop={() => onDrop(col)}
+            style={{ outline: overCol === col ? '2px solid var(--accent)' : 'none', outlineOffset: -1, borderRadius: 'var(--radius)' }}
+          >
             <div className="board-col-head">
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <span className="dot" style={{ background: STATUS_COLORS[STATUS_BADGE[col] || 'pending'] }} />{col}
@@ -417,7 +448,15 @@ function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen }
             </div>
             <div className="board-cards">
               {list.map((p) => (
-                <div className="board-card" key={p.id} onClick={() => onOpen(p)}>
+                <div
+                  className="board-card"
+                  key={p.id}
+                  draggable
+                  onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.id) }}
+                  onDragEnd={() => { setDragId(null); setOverCol(null); dragCount.current = {} }}
+                  onClick={() => onOpen(p)}
+                  style={dragId === p.id ? { opacity: 0.4 } : undefined}
+                >
                   <div className="name">{p.name}</div>
                   <div className="client">{p.client || '—'}</div>
                   {p.progress != null && <div style={{ marginTop: 10 }}><Progress val={p.progress} /></div>}
