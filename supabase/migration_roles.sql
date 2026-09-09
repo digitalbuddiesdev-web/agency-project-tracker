@@ -134,13 +134,16 @@ security definer
 set search_path = public
 as $$
 declare
-  v_owner uuid := (select owner_id from public.profiles where user_id = auth.uid());
+  v_root uuid := (select owner_id from public.profiles where user_id = auth.uid());
 begin
+  if v_root is null then
+    v_root := auth.uid();
+  end if;
   return query
-    select u.email::text, p.role, (u.id = p.owner_id)
+    select u.email::text, p.role, (p.user_id = p.owner_id)
     from public.profiles p
     join auth.users u on u.id = p.user_id
-    where p.owner_id = v_owner
+    where p.owner_id = v_root
     order by p.role, u.email;
 end;
 $$;
