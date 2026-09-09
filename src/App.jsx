@@ -409,12 +409,18 @@ function Progress({ val }) {
 }
 
 // ---- Board (Kanban) ----
+const BOARD_ORDER = ['Design Phase', 'Pending', 'Develop', 'In Development', 'Active Dev', 'Mid-Development', 'Active', 'Built', 'MVP Complete', 'Production Ready', 'Completed', 'Research']
+
 function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen, onMove }) {
   const [dragId, setDragId] = useState(null)
   const [overCol, setOverCol] = useState(null)
   const dragCount = useRef({})
-  const cols = ['Design Phase', 'Pending', 'In Development', 'Active', 'Production Ready', 'Completed']
-  const groups = cols.map((c) => ({ col: c, list: projects.filter((p) => p.status === c) }))
+
+  const present = new Set(projects.map((p) => p.status))
+  const cols = BOARD_ORDER.filter((c) => present.has(c))
+  const extras = [...new Set(projects.map((p) => p.status))].filter((s) => !BOARD_ORDER.includes(s))
+  const allCols = [...cols, ...extras]
+  const groups = allCols.map((c) => ({ col: c, list: projects.filter((p) => p.status === c) }))
 
   const onDrop = (col) => {
     setOverCol(null)
