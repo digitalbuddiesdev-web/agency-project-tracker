@@ -557,7 +557,7 @@ function PeopleView() {
         body: JSON.stringify({ email, password, role }),
       })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`)
+      if (!res.ok) throw new Error(json.error || res.statusText || `Request failed (${res.status})`)
       setMsg(`Account created: ${json.email} (${json.role}). Hand them the password.`)
       setEmail(''); setPassword('')
       load()
