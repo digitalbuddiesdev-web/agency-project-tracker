@@ -529,6 +529,22 @@ function PeopleView() {
     load()
   }
 
+  const resetPassword = async (mEmail) => {
+    const newPw = prompt(`New password for ${mEmail} (min 6 chars):`)
+    if (!newPw) return
+    if (newPw.length < 6) { alert('Password must be at least 6 characters'); return }
+    const { data: session } = await supabase.auth.getSession()
+    const token = session?.session?.access_token
+    const res = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'reset-password', email: mEmail, password: newPw }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) { alert(json.error || 'Failed to reset password'); return }
+    alert(`Password reset for ${mEmail}. Hand them the new one.`)
+  }
+
   const ROLE_LABEL = { owner: 'Owner', intern: 'Intern', viewer: 'Boss' }
 
   return (
@@ -568,10 +584,13 @@ function PeopleView() {
                 <div className="meta">{m.is_owner ? 'Workspace owner' : 'Member'}</div>
               </div>
               {!m.is_owner && (
-                <select value={m.role} onChange={(e) => changeRole(m.email, e.target.value)} style={{ maxWidth: 130 }}>
-                  <option value="intern">Intern</option>
-                  <option value="viewer">Boss</option>
-                </select>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select value={m.role} onChange={(e) => changeRole(m.email, e.target.value)} style={{ maxWidth: 130 }}>
+                    <option value="intern">Intern</option>
+                    <option value="viewer">Boss</option>
+                  </select>
+                  <button className="ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => resetPassword(m.email)} title="Reset password">Reset</button>
+                </div>
               )}
             </div>
           ))}

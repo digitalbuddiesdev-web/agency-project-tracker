@@ -9,7 +9,9 @@ export default async function handler(req, res) {
 
   const { action = 'create', email, password, role } = req.body || {}
   if (!email) return res.status(400).json({ error: 'email is required' })
-  if (!role || !['owner', 'intern', 'viewer'].includes(role)) return res.status(400).json({ error: 'invalid role' })
+  if (action !== 'reset-password') {
+    if (!role || !['owner', 'intern', 'viewer'].includes(role)) return res.status(400).json({ error: 'invalid role' })
+  }
   if (action === 'create' && (!password || String(password).length < 6)) return res.status(400).json({ error: 'password must be at least 6 characters' })
 
   const authHeader = req.headers['authorization'] || ''
@@ -28,8 +30,17 @@ export default async function handler(req, res) {
 
   const normalizedEmail = email.trim().toLowerCase()
 
-  // Find an existing auth user (we may create or just update their role).
+  // Find an existing auth user (we may create, update role, or reset password).
   const { data: existing } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+
+  if (action === 'reset-password') {
+    if (!password || String(password).length < 6) return res.status(400).json({ error: 'password must be at least 6 characters' })
+    const target = (existing.users || []).find((u) => u.email === normalizedEmail)
+    if (!target) return res.status(404).json({ error: `No account for ${normalizedEmail}. Create it instead.` })
+    const { error: resetErr } = await admin.auth.admin.updateUserById(target.id, { password: String(password) })
+    if (resetErr) return res.status(500).json({ error: 'Failed to reset password: ' + resetErr.message })
+    return res.status(200).json({ ok: true, email: normalizedEmail, action: 'reset-password' })
+  }
 
   if (action === 'role') {
     const target = (existing.users || []).find((u) => u.email === normalizedEmail)
