@@ -477,9 +477,10 @@ function BoardView({ projects, filters, onSetQ, onSetStatus, onSetSort, onOpen, 
 }
 
 // ---- People (owner only) ----
-function PeopleView({ ownerId }) {
+function PeopleView() {
   const [members, setMembers] = useState([])
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [role, setRole] = useState('intern')
   const [error, setError] = useState(null)
   const [msg, setMsg] = useState(null)
@@ -492,14 +493,21 @@ function PeopleView({ ownerId }) {
 
   useEffect(() => { load() }, [load])
 
-  const add = async (e) => {
+  const create = async (e) => {
     e.preventDefault()
     setError(null); setMsg(null); setLoading(true)
     try {
-      const { error } = await supabase.rpc('upsert_member', { p_email: email, p_role: role })
-      if (error) throw error
-      setMsg(`Done. ${email} is now ${role}.`)
-      setEmail('')
+      const { data: session } = await supabase.auth.getSession()
+      const token = session?.session?.access_token
+      const res = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ email, password, role }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`)
+      setMsg(`Account created: ${json.email} (${json.role}). Hand them the password.`)
+      setEmail(''); setPassword('')
       load()
     } catch (err) {
       setError(err.message)
@@ -508,16 +516,33 @@ function PeopleView({ ownerId }) {
     }
   }
 
-  const ROLE_LABEL = { owner: 'Owner', intern: 'Intern (full access)', viewer: 'Boss (read-only)' }
+  const changeRole = async (mEmail, newRole) => {
+    const { data: session } = await supabase.auth.getSession()
+    const token = session?.session?.access_token
+    const res = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'role', email: mEmail, role: newRole }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) { alert(json.error || 'Failed to update role'); return }
+    load()
+  }
+
+  const ROLE_LABEL = { owner: 'Owner', intern: 'Intern', viewer: 'Boss' }
 
   return (
     <div className="dash-grid">
       <div className="panel">
-        <div className="panel-head"><h3>Add / manage team</h3><div className="muted">Assign roles in your shared workspace. Each person must <strong>sign up in the app first</strong> (you can sign up on their behalf), then add their email here.</div></div>
-        <form onSubmit={add} style={{ padding: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div className="panel-head"><h3>Create a member account</h3><div className="muted">Only the owner can do this. The account is created instantly (no email confirmation needed) — give the person their email + password to sign in.</div></div>
+        <form onSubmit={create} style={{ padding: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ flex: 1, minWidth: 220 }}>
             <label>Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="intern@example.com" />
+          </div>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label>Password</label>
+            <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} placeholder="Pick a password" />
           </div>
           <div style={{ minWidth: 200 }}>
             <label>Role</label>
@@ -526,7 +551,7 @@ function PeopleView({ ownerId }) {
               <option value="viewer">Boss (read-only)</option>
             </select>
           </div>
-          <button className="primary" type="submit" disabled={loading}>{loading ? 'Saving...' : 'Add / Update'}</button>
+          <button className="primary" type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create account'}</button>
         </form>
         {error && <div className="auth-error" style={{ margin: '0 20px 20px' }}>{error}</div>}
         {msg && <div className="auth-msg" style={{ margin: '0 20px 20px' }}>{msg}</div>}
@@ -537,11 +562,17 @@ function PeopleView({ ownerId }) {
         <div className="recent-list">
           {members.map((m) => (
             <div className="recent-item" key={m.email}>
-              <span className="badge" style={{ minWidth: 70, textAlign: 'center' }}>{ROLE_LABEL[m.role] || m.role}</span>
-              <div className="info">
+              <span className="badge" style={{ minWidth: 60, textAlign: 'center' }}>{ROLE_LABEL[m.role] || m.role}</span>
+              <div className="info" style={{ flex: 1 }}>
                 <div className="name">{m.email}</div>
                 <div className="meta">{m.is_owner ? 'Workspace owner' : 'Member'}</div>
               </div>
+              {!m.is_owner && (
+                <select value={m.role} onChange={(e) => changeRole(m.email, e.target.value)} style={{ maxWidth: 130 }}>
+                  <option value="intern">Intern</option>
+                  <option value="viewer">Boss</option>
+                </select>
+              )}
             </div>
           ))}
           {members.length === 0 && <div className="empty" style={{ padding: 20 }}>No members yet.</div>}
