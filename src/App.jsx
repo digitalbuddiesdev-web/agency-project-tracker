@@ -33,33 +33,19 @@ const EMPTY_FORM = {
 
 // ---- Auth ----
 function Auth({ onAuthed }) {
-  const [mode, setMode] = useState('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [msg, setMsg] = useState(null)
 
   const submit = async (e) => {
     e.preventDefault()
-    setError(null); setMsg(null)
+    setError(null)
     setLoading(true)
     try {
-      if (mode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name } } })
-        if (error) throw error
-        if (data?.session) {
-          onAuthed(data.session.user)
-        } else {
-          setMsg('Account created! Check your email to confirm, then sign in.')
-          setMode('signin')
-        }
-      } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) throw error
-        onAuthed(data.user)
-      }
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw error
+      onAuthed(data.user)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -73,29 +59,19 @@ function Auth({ onAuthed }) {
         <h1>Agency Project Tracker</h1>
         <p className="auth-sub">Sign in to manage your projects</p>
         <form onSubmit={submit}>
-          {mode === 'signup' && (
-            <div>
-              <label>Your Name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Aditya" />
-            </div>
-          )}
           <div>
             <label>Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div>
             <label>Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
-          {msg && <div className="auth-msg">{msg}</div>}
           {error && <div className="auth-error">{error}</div>}
           <button className="primary auth-btn" type="submit" disabled={loading}>
-            {loading ? 'Please wait...' : mode === 'signup' ? 'Create Account' : 'Sign In'}
+            {loading ? 'Please wait...' : 'Sign In'}
           </button>
         </form>
-        <button className="switch-mode" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(null); setMsg(null); }}>
-          {mode === 'signin' ? 'New here? Create an account' : 'Already have an account? Sign in'}
-        </button>
       </div>
     </div>
   )
