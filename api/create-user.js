@@ -9,7 +9,7 @@ export default async function handler(req, res) {
 
   const { action = 'create', email, password, role } = req.body || {}
   if (!email) return res.status(400).json({ error: 'email is required' })
-  if (action !== 'reset-password') {
+  if (action !== 'reset-password' && action !== 'reset-link') {
     if (!role || !['owner', 'intern', 'viewer'].includes(role)) return res.status(400).json({ error: 'invalid role' })
   }
   if (action === 'create' && (!password || String(password).length < 6)) return res.status(400).json({ error: 'password must be at least 6 characters' })
