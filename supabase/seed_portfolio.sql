@@ -1,9 +1,13 @@
 -- Seed the Agency Project Tracker with the current Digital Buddies project portfolio.
--- Run AFTER you (or the logged-in user) are signed in to the app AND the schema is applied.
--- This assigns every row to the currently authenticated user (auth.uid()), satisfying RLS.
--- Safe to run multiple times (skips rows whose name already exists for this user).
+--
+-- Usage (Supabase SQL Editor). Replace the email with the account you signed up with:
+--   select public.seed_portfolio('you@example.com');
+--
+-- This inserts all 11 projects assigned to that user id (resolved from auth.users),
+-- so they satisfy RLS for that user. SECURITY DEFINER (postgres owner) bypasses RLS on insert.
+-- Safe to run multiple times (skips a project whose name already exists for that user).
 
-create or replace function public.seed_portfolio()
+create or replace function public.seed_portfolio(p_email text)
 returns int
 language plpgsql
 security definer
@@ -11,13 +15,14 @@ set search_path = public
 as $$
 declare
   i int := 0;
-  uid uuid := auth.uid();
+  uid uuid;
 begin
+  uid := (select id from auth.users where email = lower(trim(p_email)) limit 1);
   if uid is null then
-    raise exception 'Not signed in. Log in to the app first, then run: select public.seed_portfolio();';
+    raise exception 'No user found for email %. Sign up in the app first, then re-run with that email.', p_email;
   end if;
 
-  -- one generic insert; re-runs are skipped via ON CONFLICT-free existence check
+  -- one generic insert; re-runs are skipped via existence check
   if not exists (select 1 from public.projects where user_id = uid and name = 'Physio Prime (Web)') then
     insert into public.projects
       (user_id, name, client, status, type, start, last_activity, duration, hours, location, tech, scope, team, billing, folder)
@@ -52,5 +57,5 @@ begin
 end;
 $$;
 
--- Run this to seed:
--- select public.seed_portfolio();
+-- Run it (replace the email with YOUR signed-up account):
+-- select public.seed_portfolio('you@example.com');
