@@ -1,11 +1,14 @@
--- Seed the Agency Project Tracker with the current Digital Buddies project portfolio.
+-- Agency Project Tracker — one-shot portfolio seed.
 --
--- Usage (Supabase SQL Editor). Replace the email with the account you signed up with:
---   select public.seed_portfolio('you@example.com');
+-- 1. Edit the email on the LAST line to the account you signed up with in the app.
+-- 2. Run the ENTIRE file in the Supabase SQL Editor.
+--    You should see a result row containing a number (11 = all seeded, 0 = already seeded).
+--    "Success, no rows returned" means you stopped before the final line — scroll to the bottom.
 --
--- This inserts all 11 projects assigned to that user id (resolved from auth.users),
--- so they satisfy RLS for that user. SECURITY DEFINER (postgres owner) bypasses RLS on insert.
--- Safe to run multiple times (skips a project whose name already exists for that user).
+-- Safe to re-run (skips projects already present for that user).
+
+-- Drop the old auth-session-based function if it exists (from an earlier version).
+drop function if exists public.seed_portfolio();
 
 create or replace function public.seed_portfolio(p_email text)
 returns int
@@ -22,7 +25,6 @@ begin
     raise exception 'No user found for email %. Sign up in the app first, then re-run with that email.', p_email;
   end if;
 
-  -- one generic insert; re-runs are skipped via existence check
   if not exists (select 1 from public.projects where user_id = uid and name = 'Physio Prime (Web)') then
     insert into public.projects
       (user_id, name, client, status, type, start, last_activity, duration, hours, location, tech, scope, team, billing, folder)
@@ -57,5 +59,5 @@ begin
 end;
 $$;
 
--- Run it (replace the email with YOUR signed-up account):
--- select public.seed_portfolio('you@example.com');
+-- IMPORTANT: edit this email to YOUR signed-up account, then run the whole file.
+select public.seed_portfolio('YOUR-EMAIL-HERE@example.com');
